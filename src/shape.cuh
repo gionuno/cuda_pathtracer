@@ -19,7 +19,11 @@ __call__ double eval_torus(const vec & p,const vec & n)
 	vec q = vec(len(vec(p.x,p.y))-n.x,p.z);
 	return len(q)-n.y;
 }
-__call__ double eval_cylin(const vec & p,const vec & n){ return len(vec(p.x-n.x,p.y-n.y,0.0))-n.z;}
+__call__ double eval_cylin(const vec & p)
+{
+	return len(vec(p.x,p.z,0.0))-1.0;
+
+}
 
 __call__ double inter_plane(const vec & n,const vec & c, const ray & r)
 {
@@ -55,11 +59,20 @@ __call__ double eval(const shape & s,const vec & p)
 	vec q = (p-s.c)/s.a;
 	switch(s.type)
 	{
+		case 0: //plane
+			ans = eval_plane(q,s.n);
+		break;
+		case 1: //sphere
+			ans = eval_sphere(q);
+		break;
 		case 2: //box
 			ans = eval_box(q,s.n);
 		break;
 		case 3: //torus
 			ans = eval_torus(q,s.n);
+		break;
+		case 4: //cylin
+			ans = eval_cylin(q);
 		break;
 	}
 	return ans >= INF? INF: s.a*ans;
@@ -67,40 +80,65 @@ __call__ double eval(const shape & s,const vec & p)
 
 __call__ vec grad(const shape & s,const vec & p,const vec & r)
 {
-	vec ans;
+	vec ans = -r;
 
-	vec qa_p = (p+EPS*XAXIS-s.c)/s.a;
-	vec qa_m = (p-EPS*XAXIS-s.c)/s.a;
-	vec qb_p = (p+EPS*YAXIS-s.c)/s.a;
-	vec qb_m = (p-EPS*YAXIS-s.c)/s.a;
-	vec qc_p = (p+EPS*ZAXIS-s.c)/s.a;
-	vec qc_m = (p-EPS*ZAXIS-s.c)/s.a;
+	vec qa = (p+EPS*vec( 1.0,-1.0,-1.0)-s.c)/s.a;
+	vec qb = (p+EPS*vec(-1.0,-1.0, 1.0)-s.c)/s.a;
+	vec qc = (p+EPS*vec(-1.0, 1.0,-1.0)-s.c)/s.a;
+	vec qd = (p+EPS*vec( 1.0, 1.0, 1.0)-s.c)/s.a;
+
+	double ea,eb,ec,ed;
 	switch(s.type)
 	{
+		case 0: //plane
+			ea = eval_plane(qa,s.n);
+			eb = eval_plane(qb,s.n);
+			ec = eval_plane(qc,s.n);
+			ed = eval_plane(qd,s.n);
+		break;
+		case 1: //sphere
+			ea = eval_sphere(qa);
+			eb = eval_sphere(qb);
+			ec = eval_sphere(qc);
+			ed = eval_sphere(qd);
+		break;
 		case 2: //box
-			ans = vec(eval_box(qa_p,s.n)-eval_box(qa_m,s.n),
-					  eval_box(qb_p,s.n)-eval_box(qb_m,s.n),
-					  eval_box(qc_p,s.n)-eval_box(qc_m,s.n));
+			ea = eval_box(qa,s.n);
+			eb = eval_box(qb,s.n);
+			ec = eval_box(qc,s.n);
+			ed = eval_box(qd,s.n);
 		break;
 
 		case 3: //torus
-			ans = vec(eval_torus(qa_p,s.n)-eval_torus(qa_m,s.n),
-					  eval_torus(qb_p,s.n)-eval_torus(qb_m,s.n),
-					  eval_torus(qc_p,s.n)-eval_torus(qc_m,s.n));
+			ea = eval_torus(qa,s.n);
+			eb = eval_torus(qb,s.n);
+			ec = eval_torus(qc,s.n);
+			ed = eval_torus(qd,s.n);
+		break;
+
+		case 4: //cylinder
+			ea = eval_cylin(qa);
+			eb = eval_cylin(qb);
+			ec = eval_cylin(qc);
+			ed = eval_cylin(qd);
 		break;
 	}
 	if(s.type < 2) return ans;
+	ans =  ea*vec( 1.0,-1.0,-1.0)
+		  +eb*vec(-1.0,-1.0, 1.0)
+		  +ec*vec(-1.0, 1.0,-1.0)
+		  +ed*vec( 1.0, 1.0, 1.0);
 	double lans = len(ans);
 	if(lans == 0.0) return -r;
 	return ans/lans;
 }
 
-__call__ void dist_search(int nshapes,shape * shapes, const vec & p,double & rad, int & rdx)
+__call__ void dist_search(int nshapes,shape * shapes,const vec & p,double & rad, int & rdx)
 {
 	rdx =  -1;
 	rad = INF;
 	for(int n=0;n<nshapes;n++)
-	if(shapes[n].type >= 2)
+	//if(shapes[n].type >= 2)
 	{
 		double aux_rad = eval(shapes[n],p);
 		if(rad > aux_rad)
@@ -139,7 +177,7 @@ __call__ double direct_search(int nshapes,shape * shapes,const ray & r,info & I)
 		I.idx = tdx;
 		I.x = r.o+t*r.d;
 		I.s = t;
-		I.eps = 1e-4;
+		I.eps = 2*EPS;
 		switch(shapes[tdx].type)
 		{
 			case 0:
@@ -155,96 +193,80 @@ __call__ double direct_search(int nshapes,shape * shapes,const ray & r,info & I)
 
 __call__ double intersect(int nshapes,shape * shapes,const ray & r, info & I)
 {
+	int i=0;
 
 	double direct_t = direct_search(nshapes,shapes,r,I);
-	double t        = MIN_TIME;
+	double        t = MIN_TIME;
 
-	int rdx    =  -1;
-	double rad = INF;
-	int i=0;
+	int   rdx      =  -1;
+	double rad      = INF;
+	dist_search(nshapes,shapes,r.o,rad,rdx);
+
+	/*
+	double omega = 1.2;
+
+	double prev_rad = 0.0;
+	double step     = 0.0;
+	double cand_E = INF;
+	double cand_t = direct_t;
+	int    cand_rdx =  -1;
+	double cand_rad = INF;
+
+	double fsign = rad > 0.0 ? 1.0:-1.0;
+	*/
 	for(i=0;i<MAX_ITER && t < direct_t;i++)
 	{
 		rad = INF;
 		rdx =  -1;
 		dist_search(nshapes,shapes,r.o+t*r.d,rad,rdx);
 
-		if(rad < 1e-8)
+		if(abs(rad) < 1e-8)
 			break;
 		t += rad;
 	}
+
 	if(i == MAX_ITER || t > direct_t)
-		return direct_t;
-	else if(t <= direct_t)
+		return MAX_ITER;
+	else if(t < direct_t)
 	{
 		I.idx = rdx;
 		I.eps = 2.0*max(abs(rad),1e-4);
 		I.s   = t;
 		I.x   = r.o+I.s*r.d;
 		I.n   = grad(shapes[rdx],I.x,r.d);
-		return t;
+		return i;
 	}
-	/*
-	float omega = 1.2;
 
-	float cand_E = INF;
-	float cand_t = 2*EPS;
+/*	double tlast = 0.0;
+	double radlast = rad;
+	int    rdxlast = rdx;
 
-	float t      = 2*EPS;
-
-	double prev_rad = 0.0;
-	double step  = 0.0;
-
-
-	double fsign = rad > 0.0 ? 1.0:-1.0;
-
-	int i = 0;
-
-	for(i=0;i<100;i++)
+	for(i=0;i<MAX_ITER && t < direct_t;i++)
 	{
 		rdx =  -1;
 		rad = INF;
-		for(int n=0;n<nshapes;n++)
-		{
-				double aux_rad = eval(shapes[n],r.o+t*r.d);
-				if(rad > aux_rad)
-				{
-					rad = aux_rad;
-					rdx = n;
-				}
-		}
+		dist_search(nshapes,shapes,r.o+t*r.d,rad,rdx);
+		if(abs(rad) < 1e-8) break;
 
-		double srad = fsign*rad;
-		rad = abs(srad);
+		step = -rad*(t-tlast)/(rad-radlast);
+		t = tlast + step;
 
-		bool sorFail = (omega > 1.0) && (rad+prev_rad < step);
-		if(sorFail)
-		{
-			step  -= omega * step;
-			omega = 1.0;
-		}
-		else
-			step   = omega * srad;
-
-		prev_rad = rad;
-		float E = rad / t;
-		if(!sorFail && E < cand_E)
-		{
-			cand_t = t;
-			cand_E = E;
-		}
-		if( (!sorFail && E < 1e-10) || t >= INF) break;
-
-		t += step;
+		tlast   = t;
+		radlast = rad;
+		rdxlast = rdx;
 	}
-	if(t < INF)
+	if(i == MAX_ITER || t > direct_t || t < MIN_TIME)
+		return MAX_ITER;
+	else if(MIN_TIME < t && t < direct_t)
 	{
 		I.idx = rdx;
-		I.eps = 2.0*max(abs(rad),1e-14);
-		I.s   = cand_t;
+		I.eps = 2.0*max(abs(rad),1e-4);
+		I.s   = t;
 		I.x   = r.o+I.s*r.d;
 		I.n   = grad(shapes[rdx],I.x,r.d);
+		return i;
 	}*/
-	return direct_t;
+	return MAX_ITER;
 }
 
 

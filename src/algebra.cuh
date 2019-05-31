@@ -12,13 +12,13 @@
 #include <curand_kernel.h>
 #include <curand.h>
 
-#define INF 1e14
+#define INF  1e14
 #define EPS 1e-14
 
-#define MAX_ITER 100
-#define MAX_TIME 1e4
+#define MAX_ITER 75
+#define MAX_TIME 1e8
 #define MIN_TIME 1e-8
-#define MAX_DEPTH 10
+#define MAX_DEPTH 3
 #define __call__ __host__ __device__
 
 struct vec
@@ -69,7 +69,7 @@ inline __call__ double operator * (const vec & a,const vec & b){return a.x*b.x+a
 inline __call__ double len(const vec & a){return sqrt(a*a);}
 inline __call__ double len2(const vec & a){return a*a;}
 
-inline __call__ vec norm(const vec & a){return a/(len(a));}
+inline __call__ vec norm(const vec & a){return a/len(a);}
 inline __call__ vec reflect(const vec & a,const vec & n){return norm(a-2*(n*a)*n);}
 
 inline __call__ vec refract(const vec & i,const vec & n,double eta_i,double eta_t)
@@ -134,13 +134,6 @@ inline __call__ mat get_rot(double a_,const vec & q_)
 	return EYE + sin(a_)*K+(1-cos(a_))*K*K;
 }
 
-inline __device__ vec hemi_uniform(const mat & T,curandState * state)
-{
-	double r1 = 2.0*M_PI*curand_uniform_double(state);
-	double r2 = acos(sqrt(curand_uniform_double(state)));
-	double s2 = sin(r2);
-	return norm(T*vec(s2*cos(r1),s2*sin(r1),cos(r2)));
-}
 
 /*
  * ray definidos por
@@ -194,18 +187,48 @@ struct shape
 struct samp
 {
 	vec w;
-	vec e;
 	vec d;
-	__call__ samp(const vec & e_=ZERO,const vec & w_=ZERO,const vec & d_=ZERO){ e = e_; w = w_; d = d_;}
-	__call__ samp(const samp & s){ e = s.e; w = s.w; d = s.d;}
+	__call__ samp(const vec & w_=ZERO,const vec & d_=ZERO){w = w_; d = d_;}
+	__call__ samp(const samp & s){w = s.w; d = s.d;}
 	__call__ ~samp(){}
 };
+
+inline __device__ samp phong_sample(const mat & T1,const mat & T2,
+		double kd,
+		double ks,
+		double ex,
+		curandState * state)
+{
+	samp ans;
+	double u = curand_uniform_double(state);
+	if(u < kd)
+	{
+		double e1 = acos(sqrt(curand_uniform_double(state)));
+		double e2 = 2.0*M_PI*curand_uniform_double(state);
+		double s1 = sin(e1);
+		ans.d = norm(T1*vec(s1*cos(e2),s1*sin(e2),cos(e1)));
+		ans.w = ((ks+kd)/kd)*ONES;
+	}
+	else
+	{
+		double e1 = pow(curand_uniform_double(state),1.0/(ex+1.0));
+		double e2 = 2.0*M_PI*curand_uniform_double(state);
+		double s1 = sqrt(1-e1*e1);
+
+		ans.d = norm(T2*vec(s1*cos(e2),s1*sin(e2),e1));
+		ans.w = ((ks+kd)/ks)*ONES;
+	}
+	return ans;
+}
 
 struct material
 {
 	int type;
 	vec alb;
-	__call__ material(){ alb = ONES; type = -1;}
+	double kd;
+	double ks;
+	double ex;
+	__call__ material(){ alb = ONES; type = -1;kd = 0.5;ks = 0.5;ex = 0.0;}
 	__call__ ~material(){}
 };
 
