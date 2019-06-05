@@ -2,7 +2,6 @@
  * material.cuh
  *
  *  Created on: May 26, 2019
- *      Author: gionuno
  */
 
 #ifndef MATERIAL_CUH_
