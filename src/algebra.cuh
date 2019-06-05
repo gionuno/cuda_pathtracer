@@ -2,7 +2,6 @@
  * algebra.cuh
  *
  *  Created on: May 24, 2019
- *      Author: gionuno
  */
 
 #ifndef ALGEBRA_CUH_
