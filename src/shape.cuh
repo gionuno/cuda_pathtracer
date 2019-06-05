@@ -2,7 +2,6 @@
  * shape.cuh
  *
  *  Created on: May 26, 2019
- *      Author: gionuno
  */
 
 #ifndef SHAPE_CUH_
